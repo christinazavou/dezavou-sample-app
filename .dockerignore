@@ -1,0 +1,53 @@
+# Version control
+.git/
+.gitignore
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+ENV/
+.uv/
+uv.lock
+
+# Build and package artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test and coverage output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+coverage.xml
+
+# Local configuration and secrets
+.env
+.env.*
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+*.log
+*.pid
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Tests are not copied into the runtime image
+test_*.py
+tests/
