@@ -1,0 +1,42 @@
+name: Determine image metadata
+description: Determine the image version and fully qualified image name
+
+inputs:
+  registry:
+    description: Container registry hostname
+    required: true
+  image-name:
+    description: Repository-relative image name
+    required: true
+
+outputs:
+  version:
+    description: Validated image version
+    value: ${{ steps.version.outputs.version }}
+  image:
+    description: Fully qualified, lowercase image name
+    value: ${{ steps.image.outputs.image }}
+
+runs:
+  using: composite
+  steps:
+    - name: Determine image version
+      id: version
+      shell: bash
+      run: |
+        if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+          VERSION="${GITHUB_REF_NAME#v}"
+        else
+          VERSION="$(sed -n 's/^version = "\([^\"]*\)"/\1/p' pyproject.toml | head -n 1)"
+        fi
+
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          echo "VERSION must use semantic versioning: $VERSION" >&2
+          exit 1
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Set image name
+      id: image
+      shell: bash
+      run: echo "image=${{ inputs.registry }}/${{ inputs.image-name }}" | tr '[:upper:]' '[:lower:]' >> "$GITHUB_OUTPUT"

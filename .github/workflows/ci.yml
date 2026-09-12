@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: "${{ github.repository }}-be"
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+
+jobs:
+  lint:
+    name: Lint with Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python and uv
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Run Ruff
+        run: uv run ruff check main.py test_main.py
+
+  test:
+    name: Test and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python and uv
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Run tests with reports
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p reports
+          uv run pytest \
+            --junitxml=reports/junit.xml \
+            --cov=main \
+            --cov-report=term-missing \
+            --cov-report=xml:reports/coverage.xml \
+            | tee reports/pytest-output.txt
+
+      - name: Add test summary to workflow and pull request
+        if: always()
+        run: |
+          {
+            echo "## Unit test report"
+            echo
+            echo '```text'
+            cat reports/pytest-output.txt 2>/dev/null || echo "Test output was not generated."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports/
+          retention-days: 7
+
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    needs:
+      - lint-ruff
+      - lint-black
+      - test
+    outputs:
+      version: ${{ steps.image-metadata.outputs.version }}
+      image: ${{ steps.image-metadata.outputs.image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Determine image version and name
+        id: image-metadata
+        uses: ./.github/actions/image-metadata
+        with:
+          registry: ${{ env.REGISTRY }}
+          image-name: ${{ env.IMAGE_NAME }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker build \
+            --tag "${{ steps.image-metadata.outputs.image }}:latest" \
+            --tag "${{ steps.image-metadata.outputs.image }}:$SHORT_SHA" \
+            --tag "${{ steps.image-metadata.outputs.image }}:${{ steps.image-metadata.outputs.version }}" \
+            .
+
+      - name: Save image for security scan and push
+        run: docker save "${{ steps.image-metadata.outputs.image }}:latest" "${{ steps.image-metadata.outputs.image }}:${GITHUB_SHA::7}" "${{ steps.image-metadata.outputs.image }}:${{ steps.image-metadata.outputs.version }}" --output image.tar
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+          retention-days: 7
+
