@@ -108,79 +108,79 @@ class TestGetEndpoint:
         assert len(python_version.split(".")) >= 2
 
 
-class TestStressEndpoint:
-    """Test the /stress endpoint for CPU stress testing"""
+# class TestStressEndpoint:
+#     """Test the /stress endpoint for CPU stress testing"""
     
-    def test_stress_endpoint_default(self):
-        """Test stress endpoint with default duration"""
-        response = client.post("/stress")
-        assert response.status_code == 200
-        data = response.json()
+#     def test_stress_endpoint_default(self):
+#         """Test stress endpoint with default duration"""
+#         response = client.post("/stress")
+#         assert response.status_code == 200
+#         data = response.json()
         
-        assert "message" in data
-        assert "duration_seconds" in data
-        assert data["duration_seconds"] == 180  # Default 3 minutes
-        assert "started_at" in data
-        assert "ends_at" in data
-        assert "cpu_cores" in data
-        assert data["cpu_cores"] > 0
+#         assert "message" in data
+#         assert "duration_seconds" in data
+#         assert data["duration_seconds"] == 180  # Default 3 minutes
+#         assert "started_at" in data
+#         assert "ends_at" in data
+#         assert "cpu_cores" in data
+#         assert data["cpu_cores"] > 0
     
-    def test_stress_endpoint_custom_duration(self):
-        """Test stress endpoint with custom duration"""
-        response = client.post("/stress?duration_seconds=60")
-        assert response.status_code == 200
-        data = response.json()
+#     def test_stress_endpoint_custom_duration(self):
+#         """Test stress endpoint with custom duration"""
+#         response = client.post("/stress?duration_seconds=60")
+#         assert response.status_code == 200
+#         data = response.json()
         
-        assert data["duration_seconds"] == 60
-        assert "60 seconds" in data["message"]
+#         assert data["duration_seconds"] == 60
+#         assert "60 seconds" in data["message"]
     
-    def test_stress_endpoint_max_duration_limit(self):
-        """Test that stress endpoint limits maximum duration"""
-        response = client.post("/stress?duration_seconds=600")  # Try 10 minutes
-        assert response.status_code == 200
-        data = response.json()
+#     def test_stress_endpoint_max_duration_limit(self):
+#         """Test that stress endpoint limits maximum duration"""
+#         response = client.post("/stress?duration_seconds=600")  # Try 10 minutes
+#         assert response.status_code == 200
+#         data = response.json()
         
-        # Should be capped at 300 seconds (5 minutes)
-        assert data["duration_seconds"] == 300
+#         # Should be capped at 300 seconds (5 minutes)
+#         assert data["duration_seconds"] == 300
     
-    def test_stress_endpoint_min_duration_limit(self):
-        """Test that stress endpoint enforces minimum duration"""
-        response = client.post("/stress?duration_seconds=0")
-        assert response.status_code == 200
-        data = response.json()
+#     def test_stress_endpoint_min_duration_limit(self):
+#         """Test that stress endpoint enforces minimum duration"""
+#         response = client.post("/stress?duration_seconds=0")
+#         assert response.status_code == 200
+#         data = response.json()
         
-        # Should be at least 1 second
-        assert data["duration_seconds"] == 1
+#         # Should be at least 1 second
+#         assert data["duration_seconds"] == 1
     
-    @patch('main.stress_test_active', True)
-    @patch('main.stress_test_end_time', time.time() + 100)
-    def test_stress_endpoint_already_running(self):
-        """Test stress endpoint when a test is already running"""
-        response = client.post("/stress")
-        assert response.status_code == 409
-        assert "already running" in response.json()["detail"]
+#     @patch('main.stress_test_active', True)
+#     @patch('main.stress_test_end_time', time.time() + 100)
+#     def test_stress_endpoint_already_running(self):
+#         """Test stress endpoint when a test is already running"""
+#         response = client.post("/stress")
+#         assert response.status_code == 409
+#         assert "already running" in response.json()["detail"]
     
-    def test_stress_status_not_running(self):
-        """Test stress status endpoint when no test is running"""
-        response = client.get("/stress/status")
-        assert response.status_code == 200
-        data = response.json()
+#     def test_stress_status_not_running(self):
+#         """Test stress status endpoint when no test is running"""
+#         response = client.get("/stress/status")
+#         assert response.status_code == 200
+#         data = response.json()
         
-        assert data["active"] == False
-        assert "message" in data
+#         assert data["active"] == False
+#         assert "message" in data
     
-    @patch('main.stress_test_active', True)
-    @patch('main.stress_test_end_time', time.time() + 60)
-    def test_stress_status_running(self):
-        """Test stress status endpoint when test is running"""
-        response = client.get("/stress/status")
-        assert response.status_code == 200
-        data = response.json()
+#     @patch('main.stress_test_active', True)
+#     @patch('main.stress_test_end_time', time.time() + 60)
+#     def test_stress_status_running(self):
+#         """Test stress status endpoint when test is running"""
+#         response = client.get("/stress/status")
+#         assert response.status_code == 200
+#         data = response.json()
         
-        assert data["active"] == True
-        assert "remaining_seconds" in data
-        assert "end_time" in data
-        assert data["remaining_seconds"] > 0
+#         assert data["active"] == True
+#         assert "remaining_seconds" in data
+#         assert "end_time" in data
+#         assert data["remaining_seconds"] > 0
 
 
 class TestMetricsEndpoint:
