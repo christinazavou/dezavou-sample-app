@@ -1,0 +1,43 @@
+name: Security scan
+
+on:
+  workflow_call:
+
+jobs:
+  security:
+    name: Scan Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v8
+        with:
+          name: docker-image
+
+      - name: Scan image with Aqua Trivy
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          input: image.tar
+          severity: HIGH,CRITICAL
+          scanners: vuln
+          exit-code: "1"
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: false
+
+      - name: Upload scan results for GitHub UI
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-report
+          path: trivy-results.sarif
+          retention-days: 7

@@ -1,17 +1,17 @@
 # main.py
 import asyncio
-import time
 import multiprocessing
-from datetime import datetime
-from typing import Dict, Any, Optional
-import platform
 import os
+import platform
+import time
+from datetime import datetime
+from typing import Any, Optional
 
-from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
-from prometheus_client import Counter, Gauge, Histogram, Info, generate_latest, CONTENT_TYPE_LATEST
 import prometheus_client
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, Info, generate_latest
+from pydantic import BaseModel
 
 app = FastAPI(
     title="Sample DevOps API",
@@ -75,28 +75,28 @@ async def prometheus_middleware(request: Request, call_next):
     # Skip metrics endpoint to avoid recursion
     if request.url.path == "/metrics":
         return await call_next(request)
-    
+
     # Start timer
     start_time = time.time()
-    
+
     # Process request
     response = await call_next(request)
-    
+
     # Record metrics
     duration = time.time() - start_time
-    
+
     # Update metrics
     http_requests_total.labels(
         method=request.method,
         endpoint=request.url.path,
         status=response.status_code
     ).inc()
-    
+
     http_request_duration_seconds.labels(
         method=request.method,
         endpoint=request.url.path
     ).observe(duration)
-    
+
     return response
 
 
@@ -107,7 +107,7 @@ async def startup_event():
         while True:
             uptime_seconds.set(time.time() - app_start_time)
             await asyncio.sleep(10)  # Update every 10 seconds
-    
+
     asyncio.create_task(update_uptime())
 
 
@@ -139,19 +139,19 @@ async def health_check():
 
 
 @app.get("/get")
-async def get_request_info(request: Request) -> Dict[str, Any]:
+async def get_request_info(request: Request) -> dict[str, Any]:
     """
     Similar to httpbin.org/get - returns information about the request
     """
     headers = dict(request.headers)
-    
+
     # Get client host information
     client_host = request.client.host if request.client else "unknown"
-    client_port = request.client.port if request.client else "unknown"
-    
+    # client_port = request.client.port if request.client else "unknown"
+
     # Get query parameters
     query_params = dict(request.query_params)
-    
+
     response = {
         "args": query_params,
         "headers": headers,
@@ -168,7 +168,7 @@ async def get_request_info(request: Request) -> Dict[str, Any]:
             "python_version": platform.python_version()
         }
     }
-    
+
     return response
 
 
@@ -179,12 +179,12 @@ def cpu_stress_worker(duration: int):
     """
     end_time = time.time() + duration
     counter = 0
-    
+
     while time.time() < end_time:
         # Perform CPU-intensive calculations
         _ = sum(i * i for i in range(10000))
         counter += 1
-        
+
         # Brief sleep every 1000 iterations to prevent complete system freeze
         if counter % 1000 == 0:
             time.sleep(0.001)
@@ -195,17 +195,17 @@ async def run_stress_test(duration_seconds: int):
     Run CPU stress test using multiple processes
     """
     global stress_test_end_time
-    
+
     stress_test_active.set(1)
     stress_test_end_time = time.time() + duration_seconds
     stress_test_duration_seconds.set(duration_seconds)
-    
+
     # Get number of CPU cores
     num_cores = multiprocessing.cpu_count()
-    
+
     # Create a process pool to stress multiple cores
     processes = []
-    
+
     try:
         # Start stress on each core
         for _ in range(num_cores):
@@ -215,17 +215,17 @@ async def run_stress_test(duration_seconds: int):
             )
             process.start()
             processes.append(process)
-        
+
         # Wait for all processes to complete
         for process in processes:
             process.join()
-    
+
     finally:
         # Ensure all processes are terminated
         for process in processes:
             if process.is_alive():
                 process.terminate()
-        
+
         stress_test_active.set(0)
         stress_test_end_time = None
 
@@ -240,7 +240,7 @@ async def stress_endpoint(
     Default duration: 3 minutes (180 seconds)
     """
     global stress_test_end_time
-    
+
     # Check if a stress test is already running
     if stress_test_active._value.get() == 1:
         remaining_time = int(stress_test_end_time - time.time()) if stress_test_end_time else 0
@@ -248,22 +248,22 @@ async def stress_endpoint(
             status_code=409,
             detail=f"Stress test already running. {remaining_time} seconds remaining."
         )
-    
+
     # Limit duration to prevent abuse (max 5 minutes)
     if duration_seconds > 300:
         duration_seconds = 300
     elif duration_seconds < 1:
         duration_seconds = 1
-    
+
     # Increment stress test counter
     stress_test_runs_total.inc()
-    
+
     # Start stress test in background
     background_tasks.add_task(run_stress_test, duration_seconds)
-    
+
     started_at = datetime.utcnow()
     ends_at = datetime.fromtimestamp(time.time() + duration_seconds)
-    
+
     return StressResponse(
         message=f"CPU stress test started for {duration_seconds} seconds",
         duration_seconds=duration_seconds,
@@ -277,7 +277,7 @@ async def stress_endpoint(
 async def stress_status():
     """Check the status of the stress test"""
     global stress_test_end_time
-    
+
     if stress_test_active._value.get() == 1 and stress_test_end_time:
         remaining_time = max(0, int(stress_test_end_time - time.time()))
         return {
@@ -285,7 +285,7 @@ async def stress_status():
             "remaining_seconds": remaining_time,
             "end_time": datetime.fromtimestamp(stress_test_end_time).isoformat()
         }
-    
+
     return {
         "active": False,
         "message": "No stress test running"
@@ -300,7 +300,7 @@ async def metrics():
     """
     # Generate metrics in Prometheus format
     metrics_output = generate_latest(prometheus_client.REGISTRY)
-    
+
     return Response(
         content=metrics_output,
         media_type=CONTENT_TYPE_LATEST
@@ -309,11 +309,11 @@ async def metrics():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     # Get port from environment variable or use default
     port = int(os.getenv("PORT", "8000"))
     host = os.getenv("HOST", "0.0.0.0")
-    
+
     uvicorn.run(
         "main:app",
         host=host,

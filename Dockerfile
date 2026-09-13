@@ -6,6 +6,11 @@ ARG PYTHON_VERSION=3.12
 # ------------------------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS builder
 
+# Install security updates to avoid known vulnerabilities in the base image.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 # Pin the package manager version to make image builds reproducible.
 # Don't keep downloaded uv package files (--no-cache-dir) to reduce the size of the intermediate image; 
 # if speed is more important, remove the flag.
