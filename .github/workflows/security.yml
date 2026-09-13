@@ -1,0 +1,55 @@
+name: Security scan
+
+on:
+  workflow_call:
+
+jobs:
+  security:
+    name: Scan Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v8
+        with:
+          name: docker-image
+
+      - name: Scan image with Aqua Trivy
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          input: image.tar
+          severity: HIGH,CRITICAL
+          scanners: vuln
+          # Block main/release builds when High/Critical findings but not feature branches and PRs.
+          exit-code: >-
+            ${{
+              (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+              (github.ref_type == 'tag' && startsWith(github.ref_name, 'v'))) &&
+              '1' ||
+              '0'
+            }}
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: false
+
+      # - name: Upload scan results for GitHub UI
+      #   # Use always() to upload the SARIF findings even when the security scan fails.
+      #   # Only skip this step when it is a pull request from a forked repository (read-only token permissions).
+      #   if: >-
+      #     always() &&
+      #     (github.event_name != 'pull_request' ||
+      #     github.event.pull_request.head.repo.full_name == github.repository)
+      #   uses: github/codeql-action/upload-sarif@v4
+      #   with:
+      #     sarif_file: trivy-results.sarif
+
+      - name: Upload Trivy report as artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-report
+          path: trivy-results.sarif
+          retention-days: 7

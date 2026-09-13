@@ -9,13 +9,21 @@ on:
   pull_request:
 
 permissions:
-  contents: read
-  packages: write
+  contents: read  # allows the workflow to read repository content (needed for actions/checkout)
+  checks: write  # allows dorny/test-reporter to create check runs for test results
+  security-events: write  # allows Trivy SARIF results to appear in GitHub code scanning
+  packages: write  # allows the workflow to publish Docker images to GitHub Container Registry
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: "${{ github.repository }}-be"
   UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+
+# A newer run cancels the older in-progress run. 
+# Only one pipeline can continue pushing the <version>-<commit> tag.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: true
 
 jobs:
   lint:
@@ -23,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python and uv
         uses: ./.github/actions/setup-python-uv
@@ -36,55 +44,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python and uv
         uses: ./.github/actions/setup-python-uv
 
-      - name: Run tests with reports
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p reports
-          uv run pytest \
-            --junitxml=reports/junit.xml \
-            --cov=main \
-            --cov-report=term-missing \
-            --cov-report=xml:reports/coverage.xml \
-            | tee reports/pytest-output.txt
-
-      - name: Add test summary to workflow and pull request
-        if: always()
-        run: |
-          {
-            echo "## Unit test report"
-            echo
-            echo '```text'
-            cat reports/pytest-output.txt 2>/dev/null || echo "Test output was not generated."
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Run tests and upload reports
+        uses: ./.github/actions/test-report
         with:
-          name: test-reports
-          path: reports/
-          retention-days: 7
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: Build Docker image
     runs-on: ubuntu-latest
+    # Wait for lint and test jobs to complete before building the Docker image.
+    # However proceed even if they failed, unless the workflow was cancelled.
     needs:
-      - lint-ruff
-      - lint-black
+      - lint
       - test
+    if: ${{ always() && !cancelled() }}
     outputs:
       version: ${{ steps.image-metadata.outputs.version }}
       image: ${{ steps.image-metadata.outputs.image }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Determine image version and name
         id: image-metadata
@@ -103,19 +87,46 @@ jobs:
       - name: Build image
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION="${{ steps.image-metadata.outputs.version }}"
           docker build \
             --tag "${{ steps.image-metadata.outputs.image }}:latest" \
-            --tag "${{ steps.image-metadata.outputs.image }}:$SHORT_SHA" \
-            --tag "${{ steps.image-metadata.outputs.image }}:${{ steps.image-metadata.outputs.version }}" \
+            --tag "${{ steps.image-metadata.outputs.image }}:$VERSION-$SHORT_SHA" \
             .
 
       - name: Save image for security scan and push
-        run: docker save "${{ steps.image-metadata.outputs.image }}:latest" "${{ steps.image-metadata.outputs.image }}:${GITHUB_SHA::7}" "${{ steps.image-metadata.outputs.image }}:${{ steps.image-metadata.outputs.version }}" --output image.tar
+        run: docker save "${{ steps.image-metadata.outputs.image }}:latest" "${{ steps.image-metadata.outputs.image }}:${{ steps.image-metadata.outputs.version }}-${GITHUB_SHA::7}" --output image.tar
 
       - name: Upload Docker image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: docker-image
           path: image.tar
           retention-days: 7
 
+  security:
+    needs: build
+    permissions:
+      security-events: write
+      # required for private repo
+      actions: read
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  push:
+    name: Push Docker image
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - security
+    # Only push to GHCR when on the default branch or when a tag starting with "v" is pushed.
+    if: >-
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+      (github.ref_type == 'tag' && startsWith(github.ref_name, 'v'))
+    steps:
+      - name: Push Docker image
+        uses: ./.github/actions/push-image
+        with:
+          registry: ${{ env.REGISTRY }}
+          image: ${{ needs.build.outputs.image }}
+          version: ${{ needs.build.outputs.version }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}

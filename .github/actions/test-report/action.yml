@@ -1,0 +1,61 @@
+name: Run tests and upload reports
+description: Run pytest with coverage and upload test reports
+
+inputs:
+  codecov-token:
+    description: Codecov upload token
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Run tests and output report
+      shell: bash
+      run: |
+        set -o pipefail
+        mkdir -p reports
+        uv run pytest \
+          --junitxml=reports/junit.xml \
+          --cov=main \
+          --cov-report=term-missing \
+          --cov-report=xml:reports/coverage.xml \
+          | tee reports/pytest-output.txt
+
+    - name: Add test summary to workflow and pull request
+      if: always()
+      shell: bash
+      run: |
+        {
+          echo "## Unit test report"
+          echo
+          echo '```text'
+          cat reports/pytest-output.txt 2>/dev/null || echo "Test output was not generated."
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Publish test results
+      if: ${{ !cancelled() }}
+      uses: dorny/test-reporter@v3
+      with:
+        name: Pytest results
+        path: reports/junit.xml
+        reporter: python-xunit
+        use-actions-summary: true
+        fail-on-error: false
+        fail-on-empty: false
+
+    - name: Upload coverage to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/codecov-action@v7
+      with:
+        files: reports/coverage.xml
+        fail_ci_if_error: false
+        token: ${{ inputs.codecov-token }}
+
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-reports
+        path: reports/
+        retention-days: 7

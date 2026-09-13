@@ -169,8 +169,8 @@ curl http://localhost:8000/metrics | grep stress
 
 1. **Make changes** to `main.py`
 2. **Run tests**: `pytest`
-3. **Format code**: `black main.py test_main.py`
-4. **Lint**: `ruff check main.py`
+3. **Format code**: `black main.py test_main.py` or `uv run ruff format --check main.py test_main.py`
+4. **Lint**: `ruff check main.py test_main.py` or `uv run ruff check --fix main.py test_main.py`
 5. **Type check**: `mypy main.py`
 6. **Build Docker image**: `docker build -t sample-api:dev .`
 7. **Test container**: `docker run -p 8000:8000 sample-api:dev`
@@ -181,3 +181,12 @@ curl http://localhost:8000/metrics | grep stress
 # Run tests with detailed output
 pytest -vv --tb=long
 ```
+
+## CI Workflow
+
+- Lint and test phases run in parallel.
+- Build and container upload follows.
+- Security follows after uploading the image.
+- Pushing into GHCR happens only when security is done and only from specific branch/version.
+
+ The image is published with tags `<semantic version>-<commit sha>` and `latest`; this is the safest approach to know what's in the image and to not accidentally override it.
