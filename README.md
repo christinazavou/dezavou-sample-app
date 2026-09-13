@@ -186,7 +186,7 @@ pytest -vv --tb=long
 
 - Lint and test phases run in parallel.
 - Build and container upload follows.
-- Security follows after uploading the image, together with publishing.
-- Pushing into GHCR happens only from specific branch/version.
+- Security follows after uploading the image.
+- Pushing into GHCR happens only when security is done and only from specific branch/version.
 
  The image is published with tags `<semantic version>-<commit sha>` and `latest`; this is the safest approach to know what's in the image and to not accidentally override it.
