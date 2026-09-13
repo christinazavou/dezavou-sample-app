@@ -23,13 +23,25 @@ jobs:
           input: image.tar
           severity: HIGH,CRITICAL
           scanners: vuln
-          exit-code: "1"
+          # Block main/release builds when High/Critical findings but not feature branches and PRs.
+          exit-code: >-
+            ${{
+              (github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+              (github.ref_type == 'tag' && startsWith(github.ref_name, 'v'))) &&
+              '1' ||
+              '0'
+            }}
           format: sarif
           output: trivy-results.sarif
           ignore-unfixed: false
 
       - name: Upload scan results for GitHub UI
-        if: always()
+        # Use always() to upload the SARIF findings even when the security scan fails.
+        # Only skip this step when it is a pull request from a forked repository (read-only token permissions).
+        if: >-
+          always() &&
+          (github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif

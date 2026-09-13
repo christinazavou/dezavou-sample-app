@@ -105,6 +105,9 @@ jobs:
 
   security:
     needs: build
+    permissions:
+      contents: read
+      security-events: write
     uses: ./.github/workflows/security.yml
 
   push:
