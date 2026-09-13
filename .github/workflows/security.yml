@@ -35,18 +35,18 @@ jobs:
           output: trivy-results.sarif
           ignore-unfixed: false
 
-      - name: Upload scan results for GitHub UI
-        # Use always() to upload the SARIF findings even when the security scan fails.
-        # Only skip this step when it is a pull request from a forked repository (read-only token permissions).
-        if: >-
-          always() &&
-          (github.event_name != 'pull_request' ||
-          github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: trivy-results.sarif
+      # - name: Upload scan results for GitHub UI
+      #   # Use always() to upload the SARIF findings even when the security scan fails.
+      #   # Only skip this step when it is a pull request from a forked repository (read-only token permissions).
+      #   if: >-
+      #     always() &&
+      #     (github.event_name != 'pull_request' ||
+      #     github.event.pull_request.head.repo.full_name == github.repository)
+      #   uses: github/codeql-action/upload-sarif@v4
+      #   with:
+      #     sarif_file: trivy-results.sarif
 
-      - name: Upload Trivy report
+      - name: Upload Trivy report as artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
