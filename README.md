@@ -184,7 +184,46 @@ pytest -vv --tb=long
 
 ## CI Workflow
 
-- Lint, test and build (with container upload) phases run in parallel.
-- Security follows after uploading the image, in parallel with publishing. Pushing into GHCR happens only from specific branch/version.
+The CI workflow is implemented in `.github/workflows/ci.yml` with reusable composite actions under `.github/actions/`. It runs on every branch push, every pull request, and tags matching `v*`.
 
- The image is published with tags `<semantic version>-<commit sha>` and `latest`; this is the safest approach to know what's in the image and to not accidentally override it.
+### Pipeline steps
+
+1. **Lint**: checks `main.py` and `test_main.py` with Ruff.
+2. **Test and coverage**: installs the development dependencies with `uv`, runs pytest with JUnit and XML coverage reports, publishes the test summary, and uploads the reports as artifacts. Codecov upload is best effort.
+3. **Build Docker image**: derives the semantic version from `pyproject.toml` (or from a `v*` tag), builds the image, tags it as `latest` and `<version>-<short commit SHA>`, and uploads the saved image as a seven-day artifact.
+4. **Security scan**: downloads the built image and scans it with Trivy for HIGH and CRITICAL vulnerabilities. The SARIF report is uploaded as a seven-day artifact.
+5. **Push Docker image**: logs in to GHCR, loads the image artifact, and pushes both image tags when publishing is allowed.
+
+The lint, test, and build jobs have no dependencies on one another, so they start in parallel. The security and push jobs both depend on the build job and can then run in parallel. A concurrency group cancels an older run for the same commit when a newer run supersedes it.
+
+### Behavior by event
+
+| Event | Lint, test, build | Security scan | Push to GHCR |
+|---|---|---|---|
+| Pull request | Runs | Runs; vulnerabilities do not fail the PR | Skipped |
+| Push to a feature branch | Runs | Runs; vulnerabilities do not fail the branch build | Skipped |
+| Push to the default branch | Runs | HIGH/CRITICAL findings fail the workflow | Runs after the build, even if the scan fails |
+| Push of a `v*` tag | Runs | HIGH/CRITICAL findings fail the workflow | Runs after the build, even if the scan fails |
+
+This means a PR can display the scan results without receiving a registry push. On the default branch and version tags, a scan finding makes the workflow fail, but the current dependency graph does not stop the independent push job. Published images use the tags `latest` and `<semantic version>-<commit SHA>`.
+
+**Hardening suggestion:** if security findings must block publication, make `push` depend on both `build` and `security` (for example, `needs: [build, security]`) and keep its existing branch/tag condition.
+
+### CI implementation
+
+- `.github/actions/setup-python-uv/action.yml` standardizes Python 3.12, uv caching, and dependency installation.
+- `.github/actions/test-report/action.yml` keeps test execution, summaries, Codecov upload, and artifact upload consistent.
+- `.github/actions/image-metadata/action.yml` validates semantic versions and produces the lower-case image name.
+- `.github/actions/push-image/action.yml` loads the build artifact and pushes the versioned and `latest` tags.
+- `.github/workflows/security.yml` is a reusable workflow called by the main CI workflow.
+
+### Pipeline evidence
+
+The repository includes screenshots from the GitHub Actions runs:
+
+1. [Successful PR run with publishing skipped](docs/screenshots/1st-pr-ci-no-push.png)
+2. [Successful PR run with parallel jobs and no publishing](docs/screenshots/2nd-pr-ci-parallel-scan-no-push.png)
+3. [Lint, test, and build jobs starting in parallel](docs/screenshots/3rd-pr-lint-test-build-in-parallel.png)
+4. [Merge run showing the image push output](docs/screenshots/pr-merged-ci-pushed-image.png)
+
+The first two images are proof of successful complete PR runs. The third image captures a run while it was still in progress, and the fourth shows the current behavior where the security job failed while the push job completed.
